@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: autoflow
+    description: AutoFlow request orchestration and analytics
 paths:
   /healthz:
     get:
@@ -24,6 +26,193 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /users:
+    get:
+      operationId: listUsers
+      tags: [autoflow]
+      summary: List demo users for the active-user selector
+      responses:
+        "200":
+          description: Available users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+  /requests:
+    get:
+      operationId: listRequests
+      tags: [autoflow]
+      summary: List requests visible to the active user
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Visible requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RequestSummary"
+    post:
+      operationId: createRequest
+      tags: [autoflow]
+      summary: Analyze and route a natural-language request
+      parameters:
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-role
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestInput"
+      responses:
+        "201":
+          description: Created request with generated workflow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestDetail"
+  /requests/{id}:
+    get:
+      operationId: getRequest
+      tags: [autoflow]
+      summary: Get request, tasks, and workflow history
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Request details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestDetail"
+        "404":
+          description: Request not found or not visible
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [autoflow]
+      summary: List tasks visible to the active user
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Visible workflow tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+  /tasks/{id}/status:
+    patch:
+      operationId: updateTaskStatus
+      tags: [autoflow]
+      summary: Advance a task and activate the next workflow step
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-role
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskStatusInput"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /analytics:
+    get:
+      operationId: getAnalytics
+      tags: [autoflow]
+      summary: Read request, SLA, throughput, and workload metrics
+      parameters:
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dashboard aggregates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analytics"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +222,116 @@ components:
           type: string
       required:
         - status
+    User:
+      type: object
+      required: [id, fullName, email, role, department]
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: string }
+        role: { type: string }
+        department: { type: string }
+    RequestInput:
+      type: object
+      required: [rawText]
+      properties:
+        rawText: { type: string, minLength: 10, maxLength: 5000 }
+        attachmentUrls:
+          type: array
+          items: { type: string, format: uri }
+    RequestSummary:
+      type: object
+      required: [id, requesterId, requesterName, rawText, category, priority, riskLevel, extractedEntities, status, createdAt, taskCount, completedTaskCount]
+      properties:
+        id: { type: string }
+        requesterId: { type: string }
+        requesterName: { type: string }
+        rawText: { type: string }
+        category: { type: string, enum: [IT_SUPPORT, MAINTENANCE, PROCUREMENT, HR_LEAVE, DOCUMENT_APPROVAL] }
+        priority: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        riskLevel: { type: string, enum: [LOW, MEDIUM, HIGH] }
+        extractedEntities: { type: object, additionalProperties: true }
+        status: { type: string, enum: [IN_PROGRESS, RESOLVED, REJECTED] }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, "null"], format: date-time }
+        taskCount: { type: integer }
+        completedTaskCount: { type: integer }
+    RequestDetail:
+      allOf:
+        - $ref: "#/components/schemas/RequestSummary"
+        - type: object
+          required: [tasks, logs, attachmentUrls]
+          properties:
+            attachmentUrls:
+              type: array
+              items: { type: string }
+            tasks:
+              type: array
+              items: { $ref: "#/components/schemas/Task" }
+            logs:
+              type: array
+              items: { $ref: "#/components/schemas/WorkflowLog" }
+    Task:
+      type: object
+      required: [id, requestId, requestText, category, priority, assignedRole, assignedDepartment, assignedUserId, stepOrder, title, description, status, slaDeadline, createdAt]
+      properties:
+        id: { type: string }
+        requestId: { type: string }
+        requestText: { type: string }
+        category: { type: string }
+        priority: { type: string }
+        assignedRole: { type: string }
+        assignedDepartment: { type: string }
+        assignedUserId: { type: [string, "null"] }
+        stepOrder: { type: integer }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        status: { type: string, enum: [PENDING, IN_PROGRESS, COMPLETED, ESCALATED] }
+        slaDeadline: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    WorkflowLog:
+      type: object
+      required: [id, action, actorName, createdAt]
+      properties:
+        id: { type: string }
+        action: { type: string }
+        actorName: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+    TaskStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [IN_PROGRESS, COMPLETED, ESCALATED] }
+    DepartmentMetric:
+      type: object
+      required: [department, openTasks, avgResolutionHours]
+      properties:
+        department: { type: string }
+        openTasks: { type: integer }
+        avgResolutionHours: { type: number }
+    RoleMetric:
+      type: object
+      required: [role, openTasks]
+      properties:
+        role: { type: string }
+        openTasks: { type: integer }
+    Analytics:
+      type: object
+      required: [totalRequests, openRequests, slaBreaches, avgResolutionHours, resolvedThisWeek, departmentLoads, roleLoads, recentActivity]
+      properties:
+        totalRequests: { type: integer }
+        openRequests: { type: integer }
+        slaBreaches: { type: integer }
+        avgResolutionHours: { type: number }
+        resolvedThisWeek: { type: integer }
+        departmentLoads:
+          type: array
+          items: { $ref: "#/components/schemas/DepartmentMetric" }
+        roleLoads:
+          type: array
+          items: { $ref: "#/components/schemas/RoleMetric" }
+        recentActivity:
+          type: array
+          items: { $ref: "#/components/schemas/WorkflowLog" }
 
