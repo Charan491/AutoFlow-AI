@@ -1,0 +1,291 @@
+
+
+
+
+# AutoFlow AI - Master Implementation Prompt
+
+**1. Header & System Persona Role**
+You are an Expert AI Systems Architect, Principal Full-Stack Developer, and UI/UX Specialist. You have deep expertise in building enterprise-grade, highly scalable web applications using React.js (Vite), Node.js with Express.js, PostgreSQL, Tailwind CSS, and advanced AI integration using the official `@google/genai` SDK. Your task is to build a complete, production-ready application called **AutoFlow AI** based on the exhaustive specifications provided below. You must write the actual, fully functional code, avoiding placeholders, "todo" comments, or mock implementations (except where explicitly noted for initial database seeding). Execute this build with a focus on security, performance, responsive design, and robust error handling.
+
+**2. Core Mission Directive**
+Build **AutoFlow AI**, an intelligent workflow orchestration platform that converts unstructured organizational requests (e.g., "The printer in accounting is broken") into structured, automated, end-to-end workflows. The system must autonomously parse requests using AI, determine the correct workflow category, assign tasks to appropriate roles, track SLAs (Service Level Agreements), monitor bottlenecks, and provide real-time analytics.
+
+**3. Product Goal**
+To eliminate the manual overhead of managing routine internal requests (leave, IT, maintenance, procurement, document approval) by shifting from a traditional human-routed model to an AI-orchestrated model. The platform must understand intent, extract metadata, assign responsibility, and monitor progress until resolution, drastically reducing processing time and human error.
+
+**4. Mandatory Features**
+
+* **AI Request Understanding:** Natural language processing of user requests to extract intent, department, urgency, and required actions.
+* **Intelligent Workflow Generation & Routing:** Dynamic creation of multi-step task workflows based on the AI's classification (e.g., IT vs. Finance workflows).
+* **Smart Task Assignment:** Automated assignment of tasks based on role, department, and calculated priority.
+* **Risk-Based Approval Chains:** Low-risk items auto-approved; high-risk items escalated to management.
+* **SLA Monitoring & Automatic Follow-ups:** Tracking of task deadlines with visual indicators of SLA status.
+* **Bottleneck Analytics Dashboard:** Real-time visibility into system health, average processing times, and department loads.
+
+**5. Technology Requirements**
+
+* **Frontend:** React.js (Vite), Tailwind CSS, Lucide React (for icons), Recharts (for dashboard analytics), React Router DOM.
+* **Backend:** Node.js, Express.js.
+* **Database:** Replit Postgres (standard PostgreSQL). Use the `pg` package for connections.
+* **AI Integration:** `@google/genai` SDK. Must use `gemini-2.5-flash` model.
+* **Validation:** Zod (for both API request validation and strict AI structured output validation).
+* **State Management:** React Context API or Zustand.
+
+**6. Application Pages (Routes)**
+
+* `/` (Dashboard): Main analytics overview, SLA violations, workload by department, and quick stats.
+* `/requests/new` (Submit Request): Natural language input form (textarea) for employees to submit unstructured requests.
+* `/requests` (My Requests): List view of the user's submitted requests and their current workflow status.
+* `/tasks` (Task Inbox): Kanban board or list view of tasks assigned to the current user/role requiring action.
+* `/requests/:id` (Request Details): Deep dive into a specific request, showing the AI-extracted data, the workflow timeline, and current bottleneck/status.
+
+**7. User Flow**
+
+1. **Submission:** User enters an unstructured problem/request via the `/requests/new` interface.
+2. **Processing (Background):** The backend receives the text, sends it to Gemini via the structured output prompt, and receives a validated JSON payload containing the classification, priority, and required workflow steps.
+3. **Orchestration:** Backend writes the request to the database, generates the associated `tasks` based on the AI's workflow steps, and assigns them.
+4. **Action:** Assigned users (e.g., IT Technician, Manager) view the `/tasks` route, update statuses (Pending -> In Progress -> Completed).
+5. **Analytics:** Management views the `/` dashboard to monitor SLA compliance, task volume, and average resolution times.
+
+**8. Target Domains & Categorization**
+The AI must strictly categorize incoming unstructured text into one of the following domains:
+
+* `IT_SUPPORT`: Hardware/software issues, access requests.
+* `MAINTENANCE`: Facility issues, broken equipment.
+* `PROCUREMENT`: Purchase requests, office supplies.
+* `HR_LEAVE`: Time off, policy inquiries.
+* `DOCUMENT_APPROVAL`: Contracts, internal memos.
+
+**9. Form & Advisory Configuration**
+The submission interface should primarily feature a single, prominent Textarea ("Describe your request or issue in detail"). It should also allow optional file attachments (simulated/mocked for this build as URL inputs) and a "Submit to AI Orchestrator" button. The UI must show a loading state with steps ("Analyzing intent...", "Generating workflow...", "Assigning tasks...") while waiting for the backend API.
+
+**10. Database Schema (Production SQL for PostgreSQL)**
+Execute the following schema to establish the relational structure:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    role VARCHAR(50) NOT NULL, -- e.g., 'EMPLOYEE', 'MANAGER', 'TECHNICIAN', 'ADMIN'
+    department VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    requester_id UUID REFERENCES users(id),
+    raw_text TEXT NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    priority VARCHAR(20) NOT NULL, -- 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+    risk_level VARCHAR(20) NOT NULL, -- 'LOW', 'MEDIUM', 'HIGH'
+    extracted_entities JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(50) NOT NULL DEFAULT 'IN_PROGRESS', -- 'IN_PROGRESS', 'RESOLVED', 'REJECTED'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    request_id UUID REFERENCES requests(id) ON DELETE CASCADE,
+    assigned_role VARCHAR(50) NOT NULL,
+    assigned_department VARCHAR(100) NOT NULL,
+    assigned_user_id UUID REFERENCES users(id), -- Nullable if pooled to a department/role initially
+    step_order INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'ESCALATED'
+    sla_deadline TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE workflow_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    request_id UUID REFERENCES requests(id) ON DELETE CASCADE,
+    action VARCHAR(255) NOT NULL,
+    actor_id UUID REFERENCES users(id), -- System is NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+```
+
+*(Note: Create a mock seeder script to insert a few dummy users across different roles and departments).*
+
+**11. Row Level Security (RLS) / Data Isolation Rules**
+Implement robust API-level data isolation (since standard Express/pg setup is used):
+
+* `EMPLOYEE` role can only GET `requests` where `requester_id` matches their own ID.
+* `TECHNICIAN` / `MANAGER` can GET `tasks` assigned to their specific `assigned_department` or `assigned_role`.
+* `ADMIN` can GET all data across all tables.
+* All backend routes must accept a `x-user-id` and `x-user-role` header (to mock authentication for this prototype) and enforce these rules before returning data.
+
+**12. Backend API Routes**
+Implement the following RESTful endpoints in Express:
+
+* `POST /api/requests`: Accepts `{ rawText }`. Uses `x-user-id` header for the requester. Calls Gemini to parse, inserts Request, inserts Tasks, inserts initial Workflow Logs. Returns the created Request object.
+* `GET /api/requests`: Returns requests based on isolation rules. Support query params for status filtering.
+* `GET /api/requests/:id`: Returns request details, joined with tasks and logs.
+* `GET /api/tasks`: Returns tasks assigned to the requesting user/role.
+* `PATCH /api/tasks/:id/status`: Updates task status (e.g., COMPLETED). If the task is completed, automatically checks if the next task in `step_order` should be activated. If it's the final task, marks the `Request` as RESOLVED. Creates a `workflow_log`.
+* `GET /api/analytics`: Returns aggregated data for the dashboard (total requests, SLA breach counts, average completion time by department, open tasks by role).
+
+**13. Gemini SDK Setup & Server-Side Security**
+
+* **CRITICAL:** All Google GenAI SDK calls must occur on the Node.js Backend. Never expose the API key to the React frontend.
+* Initialize the client exactly like this:
+
+```javascript
+import { GoogleGenAI } from '@google/genai';
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+```
+
+* Use `gemini-2.5-flash` for all requests.
+* Utilize `responseSchema` and `responseMimeType: "application/json"` to strictly enforce JSON output.
+
+**14. AI System Prompt**
+When calling Gemini in `POST /api/requests`, use the following system instructions:
+"You are the AutoFlow AI Orchestrator. Your job is to read unstructured organizational requests from employees and translate them into strict, structured workflow data. You must determine the category, priority, risk level, extract key entities (like items, locations, dates), and generate a sequential array of actionable tasks required to resolve the request. You must output ONLY valid JSON matching the provided schema. Do not include markdown formatting or conversational text."
+
+**15. Detailed AI Prompts (with required JSON Schemas)**
+**Endpoint Prompt Structure:**
+
+```javascript
+const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `Analyze the following employee request and orchestrate the workflow: "${rawText}"`,
+    config: {
+        systemInstruction: "You are the AutoFlow AI Orchestrator...", // From Section 14
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: "OBJECT",
+            properties: {
+                category: { type: "STRING", enum: ["IT_SUPPORT", "MAINTENANCE", "PROCUREMENT", "HR_LEAVE", "DOCUMENT_APPROVAL"] },
+                priority: { type: "STRING", enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+                risk_level: { type: "STRING", enum: ["LOW", "MEDIUM", "HIGH"] },
+                extracted_entities: { 
+                    type: "OBJECT", 
+                    description: "Key-value pairs of extracted data (e.g., item: 'printer', location: 'accounts')" 
+                },
+                workflow_tasks: {
+                    type: "ARRAY",
+                    description: "Sequential tasks required to complete this request.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            step_order: { type: "INTEGER" },
+                            title: { type: "STRING" },
+                            description: { type: "STRING" },
+                            assigned_role: { type: "STRING" },
+                            assigned_department: { type: "STRING" },
+                            estimated_hours_to_complete: { type: "INTEGER" }
+                        },
+                        required: ["step_order", "title", "description", "assigned_role", "assigned_department", "estimated_hours_to_complete"]
+                    }
+                }
+            },
+            required: ["category", "priority", "risk_level", "extracted_entities", "workflow_tasks"]
+        }
+    }
+});
+
+```
+
+*Note: Calculate the `sla_deadline` in Node.js by adding the `estimated_hours_to_complete` to the current time before inserting the task.*
+
+**16. Zod Validation Requirements**
+Implement Zod on the Node.js backend to validate incoming frontend requests and structure the backend logic:
+
+* `submitRequestSchema`: Validates `req.body` ensuring `rawText` (min 10 chars) is present.
+* `updateTaskSchema`: Validates `req.body` ensuring `status` is a valid enum transition.
+Example:
+
+```javascript
+const submitRequestSchema = z.object({
+  rawText: z.string().min(10, "Request description must be at least 10 characters long.")
+});
+
+```
+
+**17. Frontend Components List**
+Create the following reusable React components:
+
+* `Sidebar`: Navigation menu (Dashboard, Submit, My Requests, Inbox).
+* `StatCard`: Displays KPI numbers on the dashboard (e.g., "SLA Breaches: 12" with a red trend arrow).
+* `SLAIndicator`: A pill/badge component that calculates time remaining until a task deadline and colors it Green (safe), Yellow (warning < 2 hours), or Red (breached).
+* `WorkflowTimeline`: A vertical stepper component showing the generated tasks for a request, highlighting completed vs. pending steps.
+* `RequestForm`: The natural language textarea component with animated submission states.
+* `TaskBoard`: A grid/list displaying tasks, with a "Complete Task" button.
+* `UserSelector`: A mock dropdown in the header to switch the active user context (e.g., "Login as Admin", "Login as IT Tech") to demonstrate RLS and varied views easily.
+
+**18. Security Requirements**
+
+* **Prevent SQL Injection:** Use parameterized queries strictly with the `pg` driver (e.g., `db.query('SELECT * FROM users WHERE id = $1', [userId])`).
+* **Error Masking:** The Express error handler must catch all API errors and return standardized JSON (e.g., `{ error: "Internal Server Error" }`). Do not leak stack traces or Gemini prompt structures to the frontend.
+* **Input Sanitization:** Sanitize `rawText` before display on the frontend to prevent XSS (React handles this automatically if using `{}` rendering, ensure `dangerouslySetInnerHTML` is NEVER used).
+
+**19. Environment Variables Template**
+Provide a `.env.example` containing:
+
+```
+PORT=3000
+DATABASE_URL=postgresql://user:password@host:port/dbname
+GEMINI_API_KEY=your_google_gemini_key_here
+
+```
+
+**20. Suggested Folder Structure**
+Strictly adhere to this structure:
+
+```
+/autoflow-ai
+├── /client                # React Frontend (Vite)
+│   ├── /src
+│   │   ├── /components    # Reusable UI elements (Sidebar, StatCard)
+│   │   ├── /pages         # Route views (Dashboard, SubmitRequest, Inbox)
+│   │   ├── /context       # User context (Mock auth state)
+│   │   ├── /utils         # Helpers (date formatting, API client)
+│   │   ├── App.jsx        # Routing setup
+│   │   └── main.jsx
+│   ├── tailwind.config.js
+│   └── package.json
+├── /server                # Node.js Backend
+│   ├── /controllers       # Request, Task, Analytics controllers
+│   ├── /routes            # Express route definitions
+│   ├── /services          # Gemini API interactions, DB logic
+│   ├── /middlewares       # Error handling, User context extraction
+│   ├── /db                # pg connection pool setup, seed scripts
+│   ├── server.js          # Express app entry
+│   └── package.json
+├── .env
+├── .gitignore
+└── README.md
+
+```
+
+**21. Implementation Phases**
+
+1. **Phase 1: Foundation & Database.** Set up Vite frontend and Node backend. Configure `pg` pool. Create the tables and run the seeder script to populate users. Set up the `x-user-id` mock auth middleware.
+2. **Phase 2: Core API & AI Orchestrator.** Implement the `/api/requests` POST route. Integrate `@google/genai` with structured outputs. Write logic to translate AI task arrays into database rows.
+3. **Phase 3: Frontend Submission & Inbox.** Build the UI to submit unstructured text. Build the Task Inbox where technicians/managers can view and complete assigned tasks.
+4. **Phase 4: Workflow Tracking & State Updates.** Implement the `PATCH /api/tasks/:id/status` logic. Ensure completing a step updates the overarching Request status appropriately. Build the vertical `WorkflowTimeline` UI.
+5. **Phase 5: Analytics & Polish.** Create the SQL aggregation queries for the dashboard. Implement Recharts on the frontend. Polish Tailwind styling, ensuring responsive design and clear SLA visual indicators.
+
+**22. Acceptance Criteria**
+
+* The application starts without errors (Frontend on a Vite port, Backend on PORT 3000).
+* A user can type a complex sentence like "I need a new Macbook Pro M3 for my design work because my old one is broken, I need it by next Tuesday" and the system automatically creates a `PROCUREMENT` request.
+* The AI successfully generates multiple tasks (e.g., Step 1: Manager Approval, Step 2: IT Procurement, Step 3: Hardware Setup).
+* Completing all child tasks automatically resolves the parent request.
+* The dashboard accurately reflects data aggregations (Task counts, SLA breaches) using Recharts.
+* Database calls are secure, parameterized, and properly isolated by the mocked user role.
+
+**23. Final Instruction to Coding Agent**
+Review all constraints, mandatory features, database schemas, and AI integration requirements detailed above. Proceed to generate the entire application stack. Create all necessary files, install required dependencies, implement the React frontend, the Node.js/Express backend, the structured Google GenAI prompts, and the PostgreSQL database queries. Ensure the final code is polished, well-commented, and immediately runnable. Do not abbreviate code logic; write the full implementation. Begin implementation now.
+
+```
+
+```

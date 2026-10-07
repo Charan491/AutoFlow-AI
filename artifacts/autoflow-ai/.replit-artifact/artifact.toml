@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "AutoFlow AI"
+description = "An AI-orchestrated operations platform that turns employee requests into routed workflows, tracks SLA deadlines, and gives teams a live view of workload and resolution."
+version = "1.0.0"
+id = "artifacts/autoflow-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22237
+
+[services.development]
+run = "pnpm --filter @workspace/autoflow-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/autoflow-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/autoflow-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22237"
+BASE_PATH = "/"
